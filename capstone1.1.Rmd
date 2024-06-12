@@ -1,0 +1,782 @@
+---
+title: "capstone project"
+author: "Fazal Hyder & Nihal Akmal"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(dplyr)
+library(GGally)
+library(corrplot)
+library(caret)
+library(psych)
+library(rpart)
+library(randomForest)
+library(nnet)
+library(e1071)
+library(naivebayes)
+library(readxl)
+library(tidyverse)
+diabetic_data <- read.csv("diabetic_data.csv",sep = ",", header = T, na.strings = "?")
+
+
+ggplot(diabetic_data, aes(x = readmitted)) +
+  geom_bar(fill = "#C71585") +
+  labs(x = "Readmitted", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+diabetic_data <- diabetic_data %>%
+  mutate(readmitted = if_else(readmitted == "<30", 1, 0))
+diabetic_data $race[is.na(diabetic_data $race)] <- "Other"
+cdf <- select(diabetic_data,  -encounter_id, -patient_nbr, -weight,-(25:41),-(43:47))
+
+
+head(cdf)
+```
+
+
+
+```{r}
+
+cdf$payer_code[is.na(cdf$payer_code)] <- "Other"
+
+
+missing_payer_code_count <- sum(cdf$payer_code == "Other")
+
+
+print(paste("Number of replaced missing values in payer_code:", missing_payer_code_count))
+
+```
+```{r}
+unique_payer_codes <- unique(cdf$payer_code)
+
+
+print(unique_payer_codes)
+```
+
+```{r}
+
+cdf <- cdf %>%
+  mutate(payer_code = if_else(payer_code == "?", "other", payer_code))
+
+
+
+unique_payer_codes_after <- unique(cdf$payer_code)
+print("Unique payer codes after replacement:")
+print(unique_payer_codes_after)
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+missing_medical_specialty_count <- sum(cdf$medical_specialty == "NA")
+
+
+
+print(paste("Number of missing values in medical_specialty:", missing_medical_specialty_count))
+
+```
+```{r}
+library(dplyr)
+
+
+cdf <- cdf %>%
+  mutate(medical_specialty = if_else(medical_specialty == "?", "other", medical_specialty))
+cdf<- cdf %>%
+  filter(gender != "Unknown/Invalid" & !is.na(gender))
+
+
+```
+
+
+```{r}
+
+cdf$medical_specialty[cdf$medical_specialty == "?" | is.na(cdf$medical_specialty)] <- "Other"
+
+
+missing_medical_specialty_count <- sum(cdf$medical_specialty == "Other")
+
+
+print(paste("Number of missing values in medical_specialty:", missing_medical_specialty_count))
+
+
+
+```
+
+```{r}
+cdfpca <- cdf
+library(data.table)
+
+setDT(cdfpca)
+cdfpca[, c("diag_1", "diag_2", "diag_3") := lapply(.SD, as.numeric), .SDcols = c("diag_1", "diag_2", "diag_3")]
+# diagnosis1
+cdfpca$diagnosis_group <- factor( rep("other",nrow(cdfpca)),ordered = F, 
+                                 levels = c("circulatory","respiratory","Digestive","Diabetes","Injury",
+                                            "Musculoskeletal","Genitourinary","Neoplasms","other"))
+cdfpca$diagnosis_group[cdfpca$diag_1>=390 & cdfpca$diag_1 <= 459 | cdfpca$diag_1==785] <- "circulatory"
+cdfpca$diagnosis_group[cdfpca$diag_1>=460 & cdfpca$diag_1 <= 519 | cdfpca$diag_1==786] <- "respiratory"
+cdfpca$diagnosis_group[cdfpca$diag_1>=520 & cdfpca$diag_1 <= 579 | cdfpca$diag_1==787] <- "Digestive"
+cdfpca$diagnosis_group[cdfpca$diag_1>=250 & cdfpca$diag_1 < 251] <- "Diabetes"
+cdfpca$diagnosis_group[cdfpca$diag_1>800 & cdfpca$diag_1 <= 999] <- "Injury"
+cdfpca$diagnosis_group[cdfpca$diag_1>=710 & cdfpca$diag_1 <= 739] <- "Musculoskeletal"
+cdfpca$diagnosis_group[cdfpca$diag_1>=580 & cdfpca$diag_1 <= 629 | cdfpca$diag_1==788] <- "Genitourinary"
+cdfpca$diagnosis_group[cdfpca$diag_1>=140 & cdfpca$diag_1 <= 239 | cdfpca$diag_1>=790 & 
+                        cdfpca$diag_1 <= 799 | cdfpca$diag_1==780 | cdfpca$diag_1>=240 & cdfpca$diag_1 < 250 |
+                        cdfpca$diag_1>=251 & cdfpca$diag_1 <= 279 | cdfpca$diag_1>=680 & cdfpca$diag_1 <= 709 |
+                        cdfpca$diag_1>=001 & cdfpca$diag_1 <= 139 | cdfpca$diag_1==781 |
+                      cdfpca$diag_1==782 | cdfpca$diag_1==784] <- "Neoplasms"
+
+# diagnosis_2
+cdfpca$diagnosis_2 <- factor( rep("other",nrow(cdfpca)),ordered = F, 
+                                 levels = c("circulatory","respiratory","Digestive","Diabetes","Injury",
+                                            "Musculoskeletal","Genitourinary","Neoplasms","other"))
+cdfpca$diagnosis_2[cdfpca$diag_2>=390 & cdfpca$diag_2 <= 459 | cdfpca$diag_2==785] <- "circulatory"
+cdfpca$diagnosis_2[cdfpca$diag_2>=460 & cdfpca$diag_2 <= 519 | cdfpca$diag_2==786] <- "respiratory"
+cdfpca$diagnosis_2[cdfpca$diag_2>=520 & cdfpca$diag_2 <= 579 | cdfpca$diag_2==787] <- "Digestive"
+cdfpca$diagnosis_2[cdfpca$diag_2>=250 & cdfpca$diag_2 < 251] <- "Diabetes"
+cdfpca$diagnosis_2[cdfpca$diag_2>800 & cdfpca$diag_2 <= 999] <- "Injury"
+cdfpca$diagnosis_2[cdfpca$diag_2>=710 & cdfpca$diag_2 <= 739] <- "Musculoskeletal"
+cdfpca$diagnosis_2[cdfpca$diag_2>=580 & cdfpca$diag_2 <= 629 | cdfpca$diag_2==788] <- "Genitourinary"
+cdfpca$diagnosis_2[cdfpca$diag_2>=140 & cdfpca$diag_2 <= 239 | cdfpca$diag_2>=790 & 
+                        cdfpca$diag_2 <= 799 | cdfpca$diag_2==780 | cdfpca$diag_2>=240 & cdfpca$diag_2 < 250 |
+                        cdfpca$diag_2>=251 & cdfpca$diag_2 <= 279 | cdfpca$diag_2>=680 & cdfpca$diag_2 <= 709 |
+                        cdfpca$diag_2>=001 & cdfpca$diag_2 <= 139 | cdfpca$diag_2==781 |
+                        cdfpca$diag_2==782 | cdfpca$diag_2==784] <- "Neoplasms"
+
+# diagnosis_3
+cdfpca$diagnosis_3 <- factor( rep("other",nrow(cdfpca)),ordered = F, 
+                                 levels = c("circulatory","respiratory","Digestive","Diabetes","Injury",
+                                            "Musculoskeletal","Genitourinary","Neoplasms","other"))
+cdfpca$diagnosis_3[cdfpca$diag_3>=390 & cdfpca$diag_3 <= 459 | cdfpca$diag_3==785] <- "circulatory"
+cdfpca$diagnosis_3[cdfpca$diag_3>=460 & cdfpca$diag_3 <= 519 | cdfpca$diag_3==786] <- "respiratory"
+cdfpca$diagnosis_3[cdfpca$diag_3>=520 & cdfpca$diag_3 <= 579 | cdfpca$diag_3==787] <- "Digestive"
+cdfpca$diagnosis_3[cdfpca$diag_3>=250 & cdfpca$diag_3 < 251] <- "Diabetes"
+cdfpca$diagnosis_3[cdfpca$diag_3>800 & cdfpca$diag_3 <= 999] <- "Injury"
+cdfpca$diagnosis_3[cdfpca$diag_3>=710 & cdfpca$diag_3 <= 739] <- "Musculoskeletal"
+cdfpca$diagnosis_3[cdfpca$diag_3>=580 & cdfpca$diag_3 <= 629 | cdfpca$diag_3==788] <- "Genitourinary"
+cdfpca$diagnosis_3[cdfpca$diag_3>=140 & cdfpca$diag_3 <= 239 | cdfpca$diag_3>=790 & 
+                        cdfpca$diag_3 <= 799 | cdfpca$diag_3==780 | cdfpca$diag_3>=240 & cdfpca$diag_3 < 250 |
+                        cdfpca$diag_3>=251 & cdfpca$diag_3 <= 279 | cdfpca$diag_3>=680 & cdfpca$diag_3 <= 709 |
+                        cdfpca$diag_3>=001 & cdfpca$diag_3 <= 139 | cdfpca$diag_3==781 |
+                        cdfpca$diag_3==782 | cdfpca$diag_3==784] <- "Neoplasms"
+
+# admission_source
+cdfpca$admission_source <- factor( rep("other",nrow(cdfpca)),ordered = F, 
+                             levels = c("clinic_referral", "emergency","other"))
+cdfpca$admission_source[cdfpca$admission_source_id==c(1,2,3)]<- "clinic_referral"
+cdfpca$admission_source[cdfpca$admission_source_id==7]<- "emergency"
+
+# discharged_to
+cdfpca$discharged_to <- factor( rep("transferred",nrow(cdfpca)),ordered = F, 
+                                  levels = c("home", "transferred","left_AMA"))
+cdfpca$discharged_to[cdfpca$discharge_disposition_id==c(1,6,8)]<- "home"
+cdfpca$discharged_to[cdfpca$discharge_disposition_id==7]<- "left_AMA"
+
+cdfpca <- select(cdfpca, -diag_1, -diag_2, -diag_3, -admission_type_id, -discharge_disposition_id)
+cdfpca <- select(cdfpca, -medical_specialty)
+cdfpca <- rename(cdfpca, diag1 = diagnosis_group, diag2=diagnosis_2, diag3 = diagnosis_3)
+
+# payer_code
+cdfpca$payer_code2 <- factor( rep("other",nrow(cdfpca)),ordered = F, 
+                               levels = c("other", "self_pay"))
+cdfpca$payer_code2[cdfpca$payer_code=="SP"]<- "self_pay"
+cdfpca <- select(cdfpca, -payer_code)
+cdfpca <- select(cdfpca, -admission_source_id)
+cdfpca <- rename(cdfpca, payer_code=payer_code2)
+
+head(cdfpca)
+write.csv(cdfpca,"pcadata.csv")
+```
+```{r}
+ndata<-select_if(cdf,is.numeric)
+ndata<-scale(ndata)
+pcaObj <- princomp(ndata, cor = TRUE, scores = TRUE, covmat = NULL)
+summary(pcaObj)
+print(pcaObj)
+names(pcaObj)
+plot(pcaObj)
+pcaObj$loadings
+biplot(pcaObj,cex=0.7)
+final_data <- as.data.frame(pcaObj$scores)
+```
+
+
+
+
+
+
+
+
+```{r}
+ cdfpca %>%
+  mutate(A1Cresult = case_when(
+    A1Cresult %in% c('>7', '>8') ~ 1,
+    A1Cresult == 'Norm' ~ 0,
+    A1Cresult == 'None' ~ -99,
+    TRUE ~ as.integer(NA)),
+         max_glu_serum = case_when(
+           max_glu_serum %in% c('>200', '>300') ~ 1,
+           max_glu_serum == 'Norm' ~ 0,
+           max_glu_serum == 'None' ~ -99,
+           TRUE ~ as.integer(NA)))
+
+```
+
+```{r}
+
+library(tidymodels)
+library(themis)
+
+
+cdfpca$readmitted <- as.factor(cdfpca$readmitted)
+
+
+recipe <- recipe(readmitted ~ ., data = cdfpca) %>%
+ 
+  step_dummy(all_nominal(), -all_outcomes()) %>%
+  
+  step_smote(readmitted)
+
+
+balanced_data_prep <- prep(recipe, training = cdfpca)
+
+
+balanced_data <- juice(balanced_data_prep)
+
+# Check the new balance of the target variable
+table(balanced_data$readmitted)
+
+
+```
+```{r}
+table(cdfpca$readmitted)
+```
+
+
+```{r}
+
+ggplot(cdfpca, aes(x = factor(readmitted), fill = factor(readmitted))) +
+  geom_bar() +
+  labs(title = "Distribution of Readmission before balancing the dataset",
+       x = "Readmitted (1 = Yes, 0 = No)",
+       y = "Count") +
+  scale_fill_manual(values = c("0" = "#FFB6C1", "1" = "#C71585"), 
+                    labels = c("Not Readmitted", "Readmitted")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+```
+
+```{r}
+library(ggplot2)
+
+
+ggplot(balanced_data, aes(x = factor(readmitted), fill = factor(readmitted))) +
+  geom_bar() +
+  labs(title = "Distribution of Readmission after balancing the data",
+       x = "Readmitted (1 = Yes, 0 = No)",
+       y = "Count") +
+  scale_fill_manual(values = c("0" = "#FFB6C1", "1" = "#C71585"), 
+                    labels = c("Not Readmitted", "Readmitted")) +
+  theme_minimal() +
+  theme(legend.title = element_blank())
+```
+
+```{r}
+library(caret)
+set.seed(123)
+index <- createDataPartition(y = balanced_data$readmitted, p = .57,list = FALSE)
+train <- balanced_data[ index,]
+test <- balanced_data[-index,]
+str(train)
+```
+
+
+```{r}
+# Assuming 'readmission_binary' is a factor with levels "No" and "Yes"
+# Create a pie chart
+library(ggplot2)
+
+
+ggplot(cdfpca, aes(x = readmitted)) +
+  geom_bar(fill = "#C71585") +
+  labs(x = "Readmitted", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+pie(table(cdfpca$readmitted), labels = c("No", "Yes"), col = c("#FFB6C1", "#C71585"))
+```
+
+
+
+
+
+
+
+```{r}
+
+library(ggplot2)
+
+cdfpca$gender <- as.factor(cdfpca$gender)
+
+
+ggplot(cdfpca, aes(x = gender, fill = readmitted)) +
+  geom_bar(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("#C71585", "#FFB6C1")) +
+  labs(x = "Gender", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+
+```
+```{r}
+
+library(tidyverse)
+ggplot(data = cdfpca, aes(x = change, fill = readmitted)) +
+  geom_bar(width = 0.7, position = 'dodge') +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Change", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+
+```
+```{r}
+
+library(ggplot2)
+
+ggplot(data = cdfpca, aes(x = diabetesMed, fill = readmitted)) +
+  geom_bar(width = 0.7, position = 'dodge') +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Diabetes Medication", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+
+```
+
+
+
+```{r}
+
+primary_color <- "#C71585" 
+secondary_color <- "#FFB6C1"  
+
+
+custom_theme <- function() {
+  theme_minimal() +
+  theme(text = element_text(size = 14, family = "Helvetica"),
+        plot.title = element_text(hjust = 0.5, size = 16, face = "bold", color = primary_color),
+        axis.title = element_text(size = 14, color = "black"),
+        axis.text = element_text(size = 12),
+        legend.position = "bottom",
+        legend.title = element_blank(),
+        legend.text = element_text(size = 12),
+        panel.grid.minor = element_blank(),
+        plot.background = element_rect(fill = "white", color = NA),
+        panel.border = element_blank())
+}
+
+
+```
+
+
+
+```{r}
+
+
+ggplot(data = cdfpca, aes(x = age, fill = readmitted)) +
+  geom_bar(width = 0.7, position = position_dodge()) +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Age", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+
+```
+```{r}
+ggplot(data = cdfpca, aes(x = race, fill = readmitted)) +
+  geom_bar(width = 0.7, position = position_dodge()) +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Race", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+
+```{r}
+library(ggplot2)
+ggplot(data = cdfpca, aes(x = time_in_hospital, fill = readmitted)) +
+  geom_histogram(binwidth = 1, alpha = 0.5, position = 'identity') +
+  scale_fill_manual(values = c("#FFB6C1","#C71585")) +
+  labs(x = "Times in Hospital", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+ggplot(data = cdfpca, aes(x = diag1, fill = readmitted)) +
+  geom_bar(width = 0.7, position = 'dodge') +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Diagnosis 1", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+ggplot(data = cdfpca, aes(x = diag2, fill = readmitted)) +
+  geom_bar(width = 0.7, position = 'dodge') +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Diagnosis 2", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+ggplot(data = cdfpca, aes(x = diag3, fill = readmitted)) +
+  geom_bar(width = 0.7, position = 'dodge') +
+  scale_fill_manual(values = c("#C71585","#FFB6C1")) +
+  labs(x = "Diagnosis 3", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+```{r}
+library(ggplot2)
+
+
+cdfpca$A1Cresult <- as.factor(cdfpca$A1Cresult)
+
+
+ggplot(cdfpca, aes(x = A1Cresult, fill = readmitted)) +
+  geom_bar(position = "dodge", width = 0.7) +
+  scale_fill_manual(values = c("#C71585", "#FFB6C1")) +
+  labs(x = "A1C Result", y = "Count", fill = "Readmitted") +
+  theme_minimal()
+```
+
+```{r}
+
+
+initial_model <- glm(readmitted ~., data=train, family=binomial(link = 'logit'))
+summary(initial_model)
+```
+
+
+```{r}
+library(caret)
+
+
+predicted_probabilities <- predict(initial_model, type = "response")
+
+
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+
+
+actual_classes <- train$readmitted
+
+conf_matrix <- table(Predicted = predicted_classes, Actual = actual_classes)
+print(conf_matrix)
+
+
+conf_matrix_caret <- confusionMatrix(as.factor(predicted_classes), as.factor(actual_classes))
+print(conf_matrix_caret)
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+cat("Accuracy: ", accuracy, "\n")
+
+
+precision <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+f1_score <- 2 * ((precision * recall) / (precision + recall))
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1 Score: ", f1_score, "\n")
+```
+
+
+Training
+```{r}
+
+library(randomForest)
+
+forest_model <- randomForest(formula = readmitted ~.,
+                             data = train,
+                             ntree = 150,   
+                             maxnodes = 9) 
+
+print(forest_model)
+
+```
+```{r}
+importance_table <- importance(forest_model)
+print(importance_table)
+
+predicted_labels <- predict(forest_model, train, type = "class")
+
+
+actual_labels <- train$readmitted
+
+
+conf_matrix_base <- table(Predicted = predicted_labels, Actual = actual_labels)
+print("Confusion Matrix (Base R):")
+print(conf_matrix_base)
+
+
+print("Confusion Matrix (Caret):")
+print(conf_matrix_caret)
+
+
+accuracy <- sum(diag(conf_matrix_base)) / sum(conf_matrix_base)
+
+
+precision <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+f1_score <- 2 * ((precision * recall) / (precision + recall))
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1 Score: ", f1_score, "\n")
+
+```
+
+
+
+
+
+Prediction using binary level
+
+Training
+
+```{r}
+nnet_model <- nnet(formula = readmitted ~., 
+                   data=train, size = 11, maxit = 140)
+```
+```{r}
+
+predicted_probabilities <- predict(nnet_model, newdata = train, type = "raw")
+
+
+predicted_classes <- ifelse(predicted_probabilities > 0.5, 1, 0)
+
+
+actual_classes <- train$readmitted
+
+
+conf_matrix <- table(Predicted = predicted_classes, Actual = actual_classes)
+print(conf_matrix)
+
+conf_matrix_caret <- confusionMatrix(as.factor(predicted_classes), as.factor(actual_classes))
+print(conf_matrix_caret)
+
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+cat("Accuracy: ", accuracy, "\n")
+
+
+precision <- conf_matrix[2, 2] / sum(conf_matrix[2, ])
+recall <- conf_matrix[2, 2] / sum(conf_matrix[, 2])
+f1_score <- 2 * ((precision * recall) / (precision + recall))
+cat("Precision: ", precision, "\n")
+cat("Recall: ", recall, "\n")
+cat("F1 Score: ", f1_score, "\n")
+```
+
+
+
+```{r}
+
+predicted_probabilities_logistic <- predict(initial_model, type = "response")
+
+
+predicted_probabilities_rf <- predict(forest_model, type = "prob")[,2] 
+
+predicted_probabilities_nn <- predict(nnet_model, type = "raw") 
+
+
+```
+```{r}
+library(pROC)
+library(dplyr)
+
+
+roc_data <- data.frame()
+auc_values <- data.frame(model = character(), AUC = numeric(), stringsAsFactors = FALSE)
+
+models <- list("Logistic Regression" = predicted_probabilities_logistic,
+               "Random Forest" = predicted_probabilities_rf,
+               "Neural Network" = predicted_probabilities_nn)
+               
+
+for (model_name in names(models)) {
+  roc <- roc(actual_classes, models[[model_name]])
+  
+  df <- data.frame(tpr = roc$sensitivities, fpr = roc$specificities, model = model_name)
+  roc_data <- rbind(roc_data, df)
+
+  auc_values <- rbind(auc_values, data.frame(model = model_name, AUC = as.numeric(auc(roc))))
+}
+
+roc_data <- roc_data %>%
+  mutate(Specificity = 1 - fpr)
+ggplot(roc_data, aes(x = Specificity, y = tpr, color = model)) + 
+  geom_line(size = 1.2) + 
+  geom_abline(linetype = "dashed") +
+  geom_text(data = auc_values, aes(x = 0.95, y = c(0.2, 0.3, 0.4, 0.5)[match(model, names(models))], 
+            label = paste(model, ": AUC=", round(AUC, 3), sep="")), 
+            hjust = 1, size = 4, show.legend = FALSE) +
+  labs(title = "Comparison of ROC Curves",
+       x = "Specificity",
+       y = "Sensitivity",
+       color = "Model") +
+  theme_minimal() + 
+  theme(legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5),
+        text = element_text(size = 12))
+
+```
+
+
+```{r}
+
+logistic <- function(x) {
+  1 / (1 + exp(-x))
+}
+
+
+coefficients <- c(
+  Intercept = -2.4166333,
+  time_in_hospital = 0.0210286,
+  num_lab_procedures = 0.0011189,
+  num_procedures = -0.0793851,
+  num_medications = 0.0092015,
+  number_outpatient = -0.0485212,
+  number_emergency = 0.0226160,
+  number_inpatient = 0.2776378,
+  number_diagnoses = 0.0614654,
+  race_Asian = -0.1864562,
+  race_Caucasian = 0.0663239,
+  race_Hispanic = -0.1777872,
+  race_Other = -0.2307798,
+  gender_Male = 0.0204169,
+  age_X.10.20. = 0.9266484,
+  age_X.20.30. = 1.5163488,
+  age_X.30.40. = 1.4281410,
+  age_X.40.50. = 1.4205213,
+  age_X.50.60. = 1.3994418,
+  age_X.60.70. = 1.6102941,
+  age_X.70.80. = 1.7113014,
+  age_X.80.90. = 1.7435064,
+  age_X.90.100. = 1.5351906,
+  max_glu_serum_X.300 = -0.0314227,
+  max_glu_serum_None = -0.1215665,
+  max_glu_serum_Norm = -0.0839967,
+  A1Cresult_X.8 = -0.0918473,
+  A1Cresult_None = 0.1935458,
+  A1Cresult_Norm = -0.1518283,
+  insulin_No = -0.2740171,
+  insulin_Steady = -0.2739288,
+  insulin_Up = -0.2167844,
+  change_No = 0.1068275,
+  diabetesMed_Yes = 0.2415408,
+  diag1_respiratory = -0.4513766,
+  diag1_Digestive = -0.2957543,
+  diag1_Diabetes = -0.0815285,
+  diag1_Injury = -0.1201806,
+  diag1_Musculoskeletal = -0.1896323,
+  diag1_Genitourinary = -0.3085040,
+  diag1_Neoplasms = -0.2420889,
+  diag1_other = -0.1450527,
+  diag2_respiratory = -0.3007201,
+  diag2_Digestive = -0.1127231,
+  diag2_Diabetes = 0.0552595,
+  diag2_Injury = 0.0119925,
+  diag2_Musculoskeletal = -0.2024955,
+  diag2_Genitourinary = -0.1498092,
+  diag2_Neoplasms = -0.0146030,
+  diag2_other = -0.1587943,
+  diag3_respiratory = -0.0518866,
+  diag3_Digestive = -0.0196089,
+  diag3_Diabetes = -0.0099408,
+  diag3_Injury = -0.0911490,
+  diag3_Musculoskeletal = -0.1522652,
+  diag3_Genitourinary = 0.0898744,
+  diag3_Neoplasms = -0.0448845,
+  diag3_other = -0.1124409,
+  admission_source_emergency = 0.0045331,
+  admission_source_other = -0.1195634,
+  discharged_to_transferred = 0.1974353,
+  discharged_to_left_AMA = 0.4048142,
+  payer_code_self_pay = -0.1593760
+)
+
+
+input_data <- c(
+  Intercept = 1,  
+  time_in_hospital = 5,
+  num_lab_procedures = 50,
+  num_procedures = 3,
+  num_medications = 15,
+  number_outpatient = 2,
+  number_emergency = 1,
+  number_inpatient = 4,
+  number_diagnoses = 8,
+  race_Asian = 0,
+  race_Caucasian = 0,
+  race_Hispanic = 0,
+  race_Other = 1,
+  gender_Male = 1,
+  age_X.10.20. = 0,
+  age_X.20.30. = 0,
+  age_X.30.40. = 0,
+  age_X.40.50. = 0,
+  age_X.50.60. = 0,
+  age_X.60.70. = 0,
+  age_X.70.80. = 0,
+  age_X.80.90. = 1,
+  age_X.90.100. = 0,
+  max_glu_serum_X.300 = 0,
+  max_glu_serum_None = 1,
+  max_glu_serum_Norm = 0,
+  A1Cresult_X.8 = 0,
+  A1Cresult_None = 1,
+  A1Cresult_Norm = 0,
+  insulin_No = 0,
+  insulin_Steady = 1,
+  insulin_Up = 0,
+  change_No = 1,
+  diabetesMed_Yes = 1,
+  diag1_respiratory = 0,
+  diag1_Digestive = 0,
+  diag1_Diabetes = 0,
+  diag1_Injury = 0,
+  diag1_Musculoskeletal = 0,
+  diag1_Genitourinary = 0,
+  diag1_Neoplasms = 0,
+  diag1_other = 1,
+  diag2_respiratory = 0,
+  diag2_Digestive = 0,
+  diag2_Diabetes = 0,
+  diag2_Injury = 0,
+  diag2_Musculoskeletal = 0,
+  diag2_Genitourinary = 0,
+  diag2_Neoplasms = 0,
+  diag2_other = 1,
+  diag3_respiratory = 0,
+  diag3_Digestive = 0,
+  diag3_Diabetes = 0,
+  diag3_Injury = 0,
+  diag3_Musculoskeletal = 0,
+  diag3_Genitourinary = 0,
+  diag3_Neoplasms = 0,
+  diag3_other = 1,
+  admission_source_emergency = 0,
+  admission_source_other = 1,
+  discharged_to_transferred = 0,
+  discharged_to_left_AMA = 0,
+  payer_code_self_pay = 0
+)
+
+z <- sum(coefficients * input_data)
+
+
+probability <- logistic(z)*100
+cat(sprintf("The chances of readmission is: %.2f percent ", probability))
+
+```
+
+
+
+
